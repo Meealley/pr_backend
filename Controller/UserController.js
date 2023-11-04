@@ -3,6 +3,8 @@ const User = require("../Model/UserModel");
 const { generateToken } = require("../Config/jwtToken");
 const validateMongoDbId = require("../utils/validateMongId");
 const { generateRefreshToken } = require("../Config/refreshToken");
+const jwt = require("jsonwebtoken");
+
 
 //POST CREATE NEW USER
 const createUser = asyncHandler(async (req, res) => {
@@ -58,6 +60,32 @@ const loginUser = asyncHandler(async (req, res) => {
   } catch (error) {
     throw new Error("Couldn't login user: " + error.message);
   }
+});
+
+const handleRefreshToken = asyncHandler(async (req, res) => {
+  const cookie = req.cookies;
+  console.log(cookie)
+  if (!cookie?.refreshToken)
+    throw new Error("No Refresh token available in cookies");
+
+  const refreshToken = cookie.refreshToken;
+    console.log(refreshToken);
+
+  const user = await User.findOne({ refreshToken });
+  if (!user) throw new Error("User not found");
+
+  jwt.verify(refreshToken, process.env.JWT_SECRET, (err, decoded) => {
+   
+    if (err || user.id !== decoded.id) {
+      throw new Error("There is something wrong with refresh token");
+    }
+    const accessToken = generateToken(user._id);
+    console.log(accessToken);
+    res.json({ accessToken });
+  });
+  //   res.json(user);
+
+  // console.log(cookie);
 });
 
 //PUT UPDATE USER
@@ -154,11 +182,27 @@ const getAllUser = asyncHandler(async (req, res) => {
 
 //GET GET USER BY ID
 const getUserByID = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  validateMongoDbId(id);
+  const { _id } = req.user;
+  // validateMongoDbId(id); 
   try {
-    const user = await User.findById(id);
+    const user = await User.findById(_id);
     res.json(user);
+  } catch (error) {
+    throw new Error("Couldn't find user" + error.message);
+  }
+},);
+
+
+const tokenIValid = asyncHandler(async (req, res) => {
+  try {
+    const token = req.header('Bearer');
+    if(!token) return res.json(false);
+
+    const verified = jwt.verify(token, process.env.JWT_SECRET)
+    if(!verified) return res.json(false);
+
+    const user = await User.findById(verified.id)
+    if(!user) return res.json(false);
   } catch (error) {
     throw new Error("Couldn't find user" + error.message);
   }
@@ -173,4 +217,5 @@ module.exports = {
   deleteUser,
   blockUser,
   unblockUser,
+  tokenIValid
 };
